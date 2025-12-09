@@ -5,3 +5,6 @@ postgres/
 
 .DS_Store
 .vscode/
+
+mongo-data/
+mongodb/
