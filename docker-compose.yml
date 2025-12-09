@@ -20,6 +20,21 @@ services:
       - ORDER_MICROSERVICE_PORT=3003
       - NATS_SERVERS=nats://nats-server:4222
   
+  auth-ms:
+    build: ./auth-ms
+    ports:
+      - ${AUTH_MS_PORT}:${AUTH_MS_PORT}
+    volumes:
+      - ./auth-ms/src:/usr/src/app/src
+    command: ["npm", "run", "start:dev"]
+    environment:
+      - PORT=3005
+      - NATS_SERVERS=nats://nats-server:4222
+      - AUTH_DATABASE_URL=${AUTH_DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - mongo
+  
   products-ms:
     build: ./products-ms
     ports:
@@ -75,3 +90,33 @@ services:
       - STRIPE_SUCCESS_URL=${STRIPE_SUCCESS_URL}
       - STRIPE_CANCEL_URL=${STRIPE_CANCEL_URL}
       - STRIPE_ENDPOINT_SECRET=${STRIPE_ENDPOINT_SECRET}
+
+  mongo:
+    build: ./mongodb
+    restart: always
+    ports:
+      - 27017:27017
+    volumes:
+      - ./mongo-data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+
+  mongo-init:
+    image: mongo:latest
+    restart: "no"
+    depends_on:
+      - mongo
+    command: >
+      bash -c "sleep 10 && mongosh --host mongo:27017 --authenticationDatabase admin -u root -p example --eval 'try { rs.status().ok } catch (e) { rs.initiate({ _id: \"rs0\", members: [{ _id: 0, host: \"mongo:27017\" }] }) }'"
+
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/
+      ME_CONFIG_BASICAUTH_ENABLED: true
+      ME_CONFIG_BASICAUTH_USERNAME: mongoexpressuser
+      ME_CONFIG_BASICAUTH_PASSWORD: mongoexpresspass
