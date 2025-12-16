@@ -1,0 +1,128 @@
+
+services:
+  nats-server:
+    image: nats:latest
+
+  client-gateway:
+    build:
+      context: ./client-gateway
+      dockerfile: dockerfile.prod
+    image: us-east4-docker.pkg.dev/tienda-ms-481308/image-register/client-gateway
+    ports:
+      - ${CLIENT_GATEWAY_PORT}:${CLIENT_GATEWAY_PORT}
+    environment:
+      - PORT=${CLIENT_GATEWAY_PORT}
+      - PRODUCT_MICROSERVICE_HOST=localhost
+      - PRODUCT_MICROSERVICE_PORT=3002
+      - ORDER_MICROSERVICE_HOST=localhost
+      - ORDER_MICROSERVICE_PORT=3003
+      - NATS_SERVERS=nats://nats-server:4222
+  
+  auth-ms:
+    build:
+      context: ./auth-ms
+      dockerfile: dockerfile.prod
+    image: us-east4-docker.pkg.dev/tienda-ms-481308/image-register/auth-ms
+    ports:
+      - ${AUTH_MS_PORT}:${AUTH_MS_PORT}
+    volumes:
+      - ./auth-ms/src:/usr/src/app/src
+    environment:
+      - PORT=3000
+      - NATS_SERVERS=nats://nats-server:4222
+      - AUTH_DATABASE_URL=${AUTH_DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - mongo
+  
+  products-ms:
+    build:
+      context: ./products-ms
+      dockerfile: dockerfile.prod
+    image: us-east4-docker.pkg.dev/tienda-ms-481308/image-register/products-ms
+    ports:
+      - ${PRODUCT_MS_PORT}:${PRODUCT_MS_PORT}
+    volumes:
+      - ./products-ms/src:/usr/src/app/src
+    environment:
+      - PORT=${PRODUCT_MS_PORT}
+      - NATS_SERVERS=nats://nats-server:4222
+      - DATABASE_URL=file:./dev.db
+
+  # orders-db:
+  #   container_name: orders_database
+  #   image: postgres:16.2
+  #   restart: always
+  #   volumes:
+  #     - ./postgres:/var/lib/postgresql/data
+  #   ports:
+  #     - 5432:5432
+  #   environment:
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: 12345 
+  #     POSTGRES_DB: ordersdb 
+  
+  orders-ms:
+    build:
+      context: orders-ms
+      dockerfile: dockerfile.prod
+      args:
+        - ORDERS_DB_URL=${ORDERS_DB_URL}
+    image: us-east4-docker.pkg.dev/tienda-ms-481308/image-register/orders-ms
+    ports:
+      - ${ORDERS_MS_PORT}:${ORDERS_MS_PORT} 
+    volumes:
+      - ./orders-ms/src:/usr/src/app/src
+    environment:
+      - PORT=${ORDERS_MS_PORT}
+      - NATS_SERVERS=nats://nats-server:4222
+      - DATABASE_URL=${ORDERS_DB_URL}
+      - PRODUCT_MICROSERVICE_HOST=localhost
+      - PRODUCT_MICROSERVICE_PORT=${PRODUCT_MS_PORT}
+    
+  payments-ms:
+    build:
+      context: ./payments-ms
+      dockerfile: dockerfile.prod
+    image: us-east4-docker.pkg.dev/tienda-ms-481308/image-register/payments-ms
+    ports:
+      - ${PAYMENT_MS_PORT}:${PAYMENT_MS_PORT}
+    volumes:
+      - ./payments-ms/src:/usr/src/app/src
+    environment:
+      - PORT=${PAYMENT_MS_PORT}
+      - NATS_SERVERS=nats://nats-server:4222
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_SUCCESS_URL=${STRIPE_SUCCESS_URL}
+      - STRIPE_CANCEL_URL=${STRIPE_CANCEL_URL}
+      - STRIPE_ENDPOINT_SECRET=${STRIPE_ENDPOINT_SECRET}
+
+  mongo:
+    build: ./mongodb
+    restart: always
+    ports:
+      - 27017:27017
+    volumes:
+      - ./mongo-data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+
+  mongo-init:
+    image: mongo:latest
+    restart: "no"
+    depends_on:
+      - mongo
+    command: >
+      bash -c "sleep 10 && mongosh --host mongo:27017 --authenticationDatabase admin -u root -p example --eval 'try { rs.status().ok } catch (e) { rs.initiate({ _id: \"rs0\", members: [{ _id: 0, host: \"mongo:27017\" }] }) }'"
+
+  # mongo-express:
+  #   image: mongo-express
+  #   restart: always
+  #   ports:
+  #     - 8081:8081
+  #   environment:
+  #     ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/
+  #     ME_CONFIG_BASICAUTH_ENABLED: true
+  #     ME_CONFIG_BASICAUTH_USERNAME: mongoexpressuser
+  #     ME_CONFIG_BASICAUTH_PASSWORD: mongoexpresspass
