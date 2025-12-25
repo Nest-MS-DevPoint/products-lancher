@@ -47,7 +47,7 @@ services:
     environment:
       - PORT=${PRODUCT_MS_PORT}
       - NATS_SERVERS=nats://nats-server:4222
-      - DATABASE_URL=file:./dev.db
+      - DATABASE_URL=file:./../../products-ms/prisma/dev.db
 
   # orders-db:
   #   container_name: orders_database
